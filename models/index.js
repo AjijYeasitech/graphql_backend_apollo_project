@@ -64,6 +64,7 @@ const fileData = async function () {
 
   db.sequelize = sequelize;
   db.Sequelize = Sequelize;
+
   // sequelize
   //   .sync({ alter: true })
   //   .then(() => {
@@ -72,6 +73,7 @@ const fileData = async function () {
   //   .catch((err) => {
   //     console.log(err);
   //   });
+
   return db;
 };
 
