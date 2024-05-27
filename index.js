@@ -15,6 +15,23 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import databaseModel from "./models/index.js";
 import { GraphQLError } from "graphql";
+import DataLoader from "dataloader";
+import { userToken } from "./services/auth.service.js";
+
+const userLoader = new DataLoader(async (receiverId) => {
+  const receiverData = await databaseModel.User.findOne({
+    where: { id: receiverId },
+  });
+  return [[receiverData]]; // dataLoader return array of value thats why send receiver data like that.
+});
+// const userToken1 = await userToken(req, res);
+// context
+const context = {
+  userLoader,
+
+  // ... other context data
+};
+
 const app = express();
 // Our httpServer handles incoming requests to our Express app.
 // Below, we tell Apollo Server to "drain" this httpServer,
@@ -26,6 +43,7 @@ const httpServer = http.createServer(app);
 const server = new ApolloServer({
   typeDefs,
   resolvers,
+
   plugins: [ApolloServerPluginDrainHttpServer({ httpServer })],
 });
 // Ensure we wait for our server to start
@@ -41,18 +59,13 @@ app.use(
   // }),
 
   expressMiddleware(server, {
-    context: async ({ req, res }) => {
-      const token = req.headers.authorization;
-      // if (!token) throw new Error("Token is not present");
-      try {
-        const userDecoded = jwt.verify(token, process.env.SECRET_KEY);
-        const userAuthentication = {
-          userId: userDecoded?.userId,
-        };
-        return { userAuthentication };
-      } catch (error) {
-        return { userAuthentication: null };
-      }
+    context: async ({ req }) => {
+      const tokens = req?.headers?.authorization;
+      const userId = await userToken(tokens);
+      return {
+        ...context,
+        ...userId,
+      };
     },
   })
 );

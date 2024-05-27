@@ -1,4 +1,5 @@
 import databaseModel from "../models/index.js";
+import { Sequelize, Op } from "sequelize";
 
 export const findUser = async (userId) => {
   const user = await databaseModel.User.findByPk(userId);
@@ -17,6 +18,7 @@ export const searchUsers = async (searchParam, userId) => {
       ],
     },
   });
+
   //   const users = await UserModel.find({
   //     $or: [
   //       { name: { $regex: keyword, $options: "i" } },

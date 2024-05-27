@@ -14,30 +14,52 @@ import {
   updateLatestMessage,
   populatedConversation,
 } from "../../services/conversation.service.js";
+import { SignUpUser, signInUser } from "../../services/auth.service.js";
+import { searchUsers } from "../../services/user.service.js";
 
 const resolvers = {
   User: {
     conversations(user) {
       return user.getConversations();
     },
-    messages(user) {
+
+    async messages(user) {
       return user.getMessages();
     },
   },
   Message: {
-    user(message) {
+    async user(message) {
       return message.getUser();
+    },
+    async conversation(message) {
+      return message.getConversation();
     },
   },
   Conversation: {
     user(conversation) {
-      return conversation.getUser;
+      // console.log("conversation", conversation);
+      return conversation.getUser();
     },
+
     message(conversation) {
       return conversation.getMessages();
     },
+    async receiver(conversation, args, context, info) {
+      const receiverId = conversation.receiverId; // Assuming a getter
+      if (!receiverId) {
+        return null;
+      }
+      const receiverUserData = await context.userLoader.load(receiverId);
+      return receiverUserData[0];
+    },
   },
   Query: {
+    async searchUser(root, { searchParam }, contextValue) {
+      const userId = contextValue.userAuthentication.userId;
+      const searchData = await searchUsers(searchParam, userId);
+      return searchData;
+    },
+
     oneUser(root, { id }, context) {
       return databaseModel.User.findOne({
         where: { id: id },
@@ -47,6 +69,7 @@ const resolvers = {
         })
         .catch((error) => error);
     },
+
     allUser(root, args, contextValue) {
       return databaseModel.User.findAll()
         .then((user) => {
@@ -55,7 +78,9 @@ const resolvers = {
         .catch((error) => error);
     },
     allMessage(root, args) {
-      return databaseModel.Message.findAll()
+      return databaseModel.Message.findAll({
+        include: { model: databaseModel.User },
+      })
         .then((messages) => {
           return messages;
         })
@@ -65,22 +90,50 @@ const resolvers = {
       return databaseModel.Message.findOne({
         where: { id: id },
       })
-        .then((message) => {
-          return message;
+        .then((user) => {
+          return user;
         })
         .catch((error) => error);
     },
     manyMessage(root, { id }) {
       return databaseModel.User.findOne({
         where: { id: id },
-        include: [{ model: Message }],
       })
         .then((message) => {
           return message;
         })
         .catch((error) => error);
     },
+    // message
+    async getMessage(root, args, contextValue, info) {
+      try {
+        if (!args.conversationId) return "Please provide conversationId";
+        const getMsg = await getConversationMessages(args.conversationId);
+        return getMsg[0];
+      } catch (error) {
+        return error.message;
+      }
+    },
+
+    /// conversation
+    async getUserConversation(root, args, contextValue, info) {
+      // const userId = contextValue.userId // from token
+      try {
+        const getConversationData = await getUserConversations(args.userId);
+
+        return getConversationData[0];
+      } catch (error) {
+        return {
+          code: 500,
+          status: false,
+          ack: 0,
+          msg: error.message,
+          data: null,
+        };
+      }
+    },
   },
+
   Mutation: {
     async createUser(root, args, contextValue, info) {
       try {
@@ -142,7 +195,13 @@ const resolvers = {
     async sendMessage(root, args, contextValue, info) {
       // validation pending
       try {
-        const newMessageData = await createdMessage(args.input);
+        const senderId = contextValue.userAuthentication.userId; // this is from token
+
+        const { conversationId } = args.input;
+        const newMessageData = await createdMessage({
+          ...args.input,
+          senderId,
+        });
         if (!newMessageData)
           return {
             code: 400,
@@ -150,9 +209,11 @@ const resolvers = {
             ack: 0,
             msg: "message is not create",
           };
+        console.log("newMessage", newMessageData);
         const populateMessageData = await populateMessage(
           newMessageData.dataValues.id
         );
+        console.log("populateMessageData", populateMessageData);
         if (!populateMessageData)
           return {
             code: 400,
@@ -160,14 +221,16 @@ const resolvers = {
             ack: 0,
             msg: "Conversation is not create",
           };
-        console.log("id...", args.input.Id);
-        await updateLatestMessage(args.input.Id, newMessageData);
+        console.log("populateMessageData", populateMessageData);
+        console.log("newMessageData", newMessageData.id);
+
+        await updateLatestMessage(conversationId, newMessageData.id);
         return {
           code: 200,
           status: true,
           ack: 1,
           msg: "Successfully send msg",
-          message: populateMessageData,
+          message: newMessageData,
           conversation: "right now send nothing",
         };
       } catch (error) {
@@ -266,6 +329,8 @@ const resolvers = {
     async createOpenConversation(root, args, contextValue, info) {
       try {
         // add validation pending
+        // const senderId = contextValue.userAuthentication.userId;
+        console.log("contextValue", contextValue);
         const { isGroup, senderId, receiverId } = args.input;
         if (isGroup === false) {
           if (!receiverId) {
@@ -282,14 +347,16 @@ const resolvers = {
             receiverId,
             false
           );
-          console.log("existedConversation", existedConversation);
+          // console.log("existedConversation", existedConversation);
+
           if (existedConversation.length !== 0) {
             return {
+              __typename: "CreateConversationResponses",
               code: 200,
               status: true,
               ack: 1,
               msg: "Conversation already exist",
-              data: existedConversation,
+              data: existedConversation[0],
             };
           } else {
             const conversationData = {
@@ -301,7 +368,7 @@ const resolvers = {
             };
 
             const newConversation = await createConversation(conversationData);
-            console.log("newConversation", newConversation);
+
             if (!newConversation)
               return {
                 code: 400,
@@ -312,12 +379,13 @@ const resolvers = {
             const populatedConversations = await populatedConversation(
               newConversation.id
             );
-            console.log("populatedConversation", populatedConversations);
+
             return {
+              __typename: "CreateConversationResponses",
               code: 200,
               status: true,
               ack: 1,
-              msg: "successfully populate",
+              msg: "successfully populate and create",
               data: populatedConversations,
             };
           }
@@ -326,7 +394,7 @@ const resolvers = {
           // it is a group chat
           // check if group chat exists
           const existedGroupConversation = await doesConversationExist(isGroup);
-          console.log("existedGroupConversation", existedGroupConversation);
+
           return {
             code: 200,
             status: true,
@@ -348,12 +416,15 @@ const resolvers = {
 
     async updateConversation(
       root,
-      { id, name, picture, isGroup, isAdmin, isActive }
+      { id, name, picture, latestMessageId, isGroup, isAdmin, isActive }
     ) {
       try {
         let content = {};
         if (name) {
           content.name = name;
+        }
+        if (latestMessageId) {
+          content.latestMessageId = latestMessageId;
         }
         if (isGroup) {
           content.isGroup = isGroup;
@@ -443,30 +514,33 @@ const resolvers = {
         };
       }
     },
-    // Login section //
-    async userLogin(root, args, contextValue, info) {
+
+    // user sign in
+    async userSignUp(root, args, contextValue, info) {
       try {
-        const checkUser = await databaseModel.User.findOne({
-          where: { email: args.email },
-        });
+        const createUser = await SignUpUser(args.input);
+        return {
+          code: 201,
+          status: true,
+          ack: 1,
+          msg: "successfully create",
+          data: createUser,
+        };
+      } catch (error) {
+        return {
+          code: 500,
+          status: false,
+          ack: 0,
+          msg: error.message,
+        };
+      }
+    },
 
-        if (!checkUser) throw new Error("User not found");
-        if (bcrypt.compareSync(args.password, checkUser?.password)) {
-          const token = jwt.sign(
-            { userId: checkUser.dataValues.id },
-            process.env.SECRET_KEY,
-            {
-              algorithm: process.env.JWT_ALGORITHM,
-              expiresIn: process.env.EXPIRES_IN,
-            }
-          ); // expires in 30 days
-          checkUser.token = token;
-
-          console.log("contextValue", contextValue);
-          return checkUser;
-        } else {
-          throw new Error("Invalid username or password");
-        }
+    // Login section //
+    async userSignIn(root, args, contextValue, info) {
+      try {
+        const userSign = await signInUser(args.email, args.password);
+        return userSign;
       } catch (error) {
         return error;
       }

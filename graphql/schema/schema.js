@@ -1,8 +1,10 @@
 import GraphQLJSON, { GraphQLJSONObject } from "graphql-type-json";
+import pkg from "graphql-iso-date";
+const { GraphQLDateTime } = pkg;
 
 const typeDefs = `#graphql
 scalar JSON
-scalar JSONObject
+scalar GraphQLDateTime
 
   type User {
     id: Int!
@@ -11,16 +13,27 @@ scalar JSONObject
     picture:String
     status:String
     isActive:Boolean
+    createdAt : GraphQLDateTime
     messages: [Message]
     conversations:[Conversation]
     token:String
+  }
+  type Receiver {
+    id: Int!
+    name: String!
+    email: String!
+    picture:String
+    status:String
+    isActive:Boolean
+    createdAt : GraphQLDateTime
   }
 
   type Message {
     id: Int!
     message:String!
     files: JSON
-    user: User!
+    senderId:Int
+    user: User
     conversation:Conversation
   }
 
@@ -28,8 +41,11 @@ scalar JSONObject
     id:Int!
     name:String!
     picture:String!
-    user:User!
+    senderId:Int
+    receiverId:Int
+    user:User
     message:[Message]
+    receiver: User
     isGroup:Boolean
     isAdmin:Boolean
     isActive:Boolean
@@ -55,13 +71,13 @@ scalar JSONObject
     msg:String!
     data:Message
   }
+  
   type SendMessageResponse {
     code:Int!
     status:Boolean!
     ack:Int!
     msg:String!
     message:Message
-    user:User
   }
   #---- end----
     # ------- Responses for Conversation ------
@@ -73,6 +89,8 @@ scalar JSONObject
     data:Conversation
   }
   #---- end----
+
+ # --  union CustomCreateConversationRes = SendMessageResponse | CreateConversationResponses
 
 # --- all Responses end here ---------
 
@@ -91,7 +109,7 @@ scalar JSONObject
 
   #----- Input for message ---
   input CreateMessageInput {
-    userId:Int!
+    conversationId:Int!
     message:String!
     files: JSON
   }
@@ -103,7 +121,7 @@ scalar JSONObject
     picture:String
     senderId:Int!
     receiverId:Int!
-    messageId:Int
+    latestMessageId:Int
      isGroup:Boolean!
     isAdmin:Boolean
     isActive:Boolean
@@ -114,14 +132,19 @@ scalar JSONObject
 
 #------------ Query start -------------
   type Query {
+    searchUser(searchParam:String) :[User]
     oneUser(id: Int!): User
     allUser: [User!]!
     manyMessage(id: Int!): User
     allMessage: [Message!]!
     oneMessage(id: Int!): Message
-    oneConversation:[Conversation!]!
+    getUserConversation(userId:Int!):Conversation
+    getMessage(conversationId:Int!):Message
+    
 
   }
+ 
+
 
   type Mutation {
 #- ------------ User section --------
@@ -159,6 +182,7 @@ scalar JSONObject
       id:Int!
       name:String
       picture:String
+      latestMessageId:Int!
       isGroup:Boolean
       isAdmin:Boolean
       isActive:Boolean
@@ -169,7 +193,8 @@ scalar JSONObject
 # ---------- conversation section end ---------------
 
 #------ user Log in section ---------
-    userLogin(email: String!,password:String!): User
+ userSignUp(input:CreateUserInput!):CreateUserResponses
+    userSignIn(email: String!,password:String!): User
   }
 `;
 

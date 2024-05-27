@@ -1,26 +1,23 @@
 import databaseModel from "../models/index.js";
+import { Op, where } from "sequelize";
+import createHttpError from "http-errors";
+import validator from "validator";
 
 export const doesConversationExist = async (senderId, receiverId, isGroup) => {
   if (isGroup === false) {
-    let convos = databaseModel.Conversation.findAll({
+    let convos = await databaseModel.Conversation.findAll({
       where: {
         isGroup: false,
         senderId: senderId,
         receiverId: receiverId,
       },
     });
-
-    // return korte hbe all conversation user data
-
     return convos;
   } else {
     // it's a group chat
     let convo = databaseModel.Conversation.findAll({
       where: { isGroup: true },
     });
-
-    // return korte hbe user admin and latestMessage
-
     return convo;
   }
 };
@@ -40,19 +37,23 @@ export const populatedConversation = async (id) => {
 
 // getUserConversations
 export const getUserConversations = async (user_id) => {
-  // console.log("user_id",user_id);
   const conversations = await databaseModel.Conversation.findAll({
-    where: { senderId: user_id },
+    where: { [Op.or]: [{ senderId: user_id }, { receiverId: user_id }] },
   });
-  // return korte hbe all user data ,
+
   return conversations;
 };
 
-export const updateLatestMessage = async (conversationId, msg) => {
+export const updateLatestMessage = async (conversationId, latestMessageId) => {
   const updatedConversation = await databaseModel.Conversation.update(
-    { ...msg },
+    { latestMessageId: latestMessageId },
     { where: { id: conversationId } }
   );
-  // checking pending
+  ///  checking pending
+  if (updatedConversation[0] == 0)
+    throw createHttpError.BadRequest(
+      "update latest message not updated in conversation"
+    );
+  // console.log("updatedConversation", updatedConversation);
   return updatedConversation;
 };
