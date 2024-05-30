@@ -19,14 +19,5 @@ export const searchUsers = async (searchParam, userId) => {
     },
   });
 
-  //   const users = await UserModel.find({
-  //     $or: [
-  //       { name: { $regex: keyword, $options: "i" } },
-  //       { email: { $regex: keyword, $options: "i" } },
-  //     ],
-  //   }).find({
-  //     _id: { $ne: userId },
-  //   });
-  //    console.log("user",users);
   return users;
 };
