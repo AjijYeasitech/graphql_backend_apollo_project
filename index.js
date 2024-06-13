@@ -3,6 +3,9 @@ dotenv.config();
 import { ApolloServer } from "@apollo/server";
 import { expressMiddleware } from "@apollo/server/express4";
 import { ApolloServerPluginDrainHttpServer } from "@apollo/server/plugin/drainHttpServer";
+import { makeExecutableSchema } from "@graphql-tools/schema";
+import { WebSocketServer } from "ws";
+import { useServer } from "graphql-ws/lib/use/ws";
 import express from "express";
 import http from "http";
 import cors from "cors";
@@ -24,27 +27,44 @@ const userLoader = new DataLoader(async (receiverId) => {
   });
   return [[receiverData]]; // dataLoader return array of value thats why send receiver data like that.
 });
-// const userToken1 = await userToken(req, res);
+
 // context
 const context = {
   userLoader,
-
   // ... other context data
 };
 
+const schema = makeExecutableSchema({ typeDefs, resolvers });
+
 const app = express();
-// Our httpServer handles incoming requests to our Express app.
-// Below, we tell Apollo Server to "drain" this httpServer,
-// enabling our servers to shut down gracefully.
 const httpServer = http.createServer(app);
 
-// Same ApolloServer initialization as before, plus the drain plugin
-// for our httpServer.
-const server = new ApolloServer({
-  typeDefs,
-  resolvers,
+// Create our WebSocket server using the HTTP server we just set up.
+const wsServer = new WebSocketServer({
+  server: httpServer,
+  path: "/subscriptions",
+});
 
-  plugins: [ApolloServerPluginDrainHttpServer({ httpServer })],
+// Save the returned server's info so we can shutdown this server later
+const serverCleanup = useServer({ schema }, wsServer);
+
+const server = new ApolloServer({
+  schema,
+  plugins: [
+    // Proper shutdown for the HTTP server.
+    ApolloServerPluginDrainHttpServer({ httpServer }),
+
+    // Proper shutdown for the WebSocket server.
+    {
+      async serverWillStart() {
+        return {
+          async drainServer() {
+            await serverCleanup.dispose();
+          },
+        };
+      },
+    },
+  ],
 });
 // Ensure we wait for our server to start
 await server.start();
@@ -53,15 +73,13 @@ app.use(
   cors(),
   express.json(),
   cookieParser(),
-  // helmet(),
-  // fileUpload({
-  //   useTempFiles: true,
-  // }),
-
   expressMiddleware(server, {
     context: async ({ req }) => {
+      // console.log("tokens", req);
       const tokens = req?.headers?.authorization;
+      console.log("tokens", tokens);
       const userId = await userToken(tokens);
+      console.log("userIds", userId);
       return {
         ...context,
         ...userId,

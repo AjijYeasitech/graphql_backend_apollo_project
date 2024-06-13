@@ -16,6 +16,9 @@ import {
 } from "../../services/conversation.service.js";
 import { SignUpUser, signInUser } from "../../services/auth.service.js";
 import { searchUsers } from "../../services/user.service.js";
+import { PubSub } from "graphql-subscriptions";
+
+const pubsub = new PubSub();
 
 const resolvers = {
   User: {
@@ -53,10 +56,29 @@ const resolvers = {
       return receiverUserData[0];
     },
   },
+
+  Subscription: {
+    // hello: {
+    //   // Example using an async generator
+    //   subscribe: async function* () {
+    //     for await (const word of ["Hello", "Bonjour", "Ciao"]) {
+    //       yield { hello: word };
+    //     }
+    //   },
+    // },
+    userCreated: {
+      // More on pubsub below
+      subscribe: () => pubsub.asyncIterator(["USER_CREATED"]),
+    },
+  },
+
   Query: {
     async searchUser(root, { searchParam }, contextValue) {
-      const userId = contextValue.userAuthentication.userId;
+      // console.log("searchParam", searchParam);
+      const userId = contextValue?.userAuthentication?.userId;
+      // console.log("userID", userId);
       const searchData = await searchUsers(searchParam, userId);
+
       return searchData;
     },
 
@@ -117,9 +139,11 @@ const resolvers = {
 
     /// conversation
     async getUserConversation(root, args, contextValue, info) {
-      // const userId = contextValue.userId // from token
+      const userId = contextValue?.userAuthentication.userId; // from token
+      console.log("userId", userId);
+
       try {
-        const getConversationData = await getUserConversations(args.userId);
+        const getConversationData = await getUserConversations(userId);
 
         return getConversationData[0];
       } catch (error) {
@@ -140,7 +164,7 @@ const resolvers = {
         // if (!contextValue?.userAuthentication?.userId) {
         //   throw new Error(" Your are Unauthorized");
         // }
-
+        console.log("ajij");
         if (args.input.password !== args.input.confirmPassword) {
           return {
             code: 400,
@@ -152,6 +176,8 @@ const resolvers = {
         const hashPassword = bcrypt.hash(args.input.password, 10);
         args.input.password = await hashPassword;
         const createUser = await databaseModel.User.create(args.input);
+        pubsub.publish("USER_CREATED", { userCreated: "user created" });
+
         return {
           code: 201,
           status: true,
@@ -329,9 +355,9 @@ const resolvers = {
     async createOpenConversation(root, args, contextValue, info) {
       try {
         // add validation pending
-        // const senderId = contextValue.userAuthentication.userId;
-        console.log("contextValue", contextValue);
-        const { isGroup, senderId, receiverId } = args.input;
+        const senderId = contextValue.userAuthentication.userId;
+
+        const { isGroup, receiverId } = args.input;
         if (isGroup === false) {
           if (!receiverId) {
             return {

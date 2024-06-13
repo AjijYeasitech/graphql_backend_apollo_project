@@ -52,6 +52,16 @@ scalar GraphQLDateTime
   }
 
 
+  type Subscription {
+    userCreated : String!
+    friendRequestAccepted: FriendRequestPayload!
+  }
+  type FriendRequestPayload {
+  senderId: Int!
+  receiverId: Int!
+}
+
+
 # ----- Responses send to frontend schema ----
 
   # ------- Responses for create user ------
@@ -119,7 +129,6 @@ scalar GraphQLDateTime
   input CreateConversationInput {
     name:String
     picture:String
-    senderId:Int!
     receiverId:Int!
     latestMessageId:Int
      isGroup:Boolean!
@@ -138,7 +147,7 @@ scalar GraphQLDateTime
     manyMessage(id: Int!): User
     allMessage: [Message!]!
     oneMessage(id: Int!): Message
-    getUserConversation(userId:Int!):Conversation
+    getUserConversation:Conversation
     getMessage(conversationId:Int!):Message
     
 
